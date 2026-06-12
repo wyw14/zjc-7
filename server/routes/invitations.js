@@ -7,7 +7,8 @@ const router = express.Router();
 router.get('/', (req, res) => {
   const invitations = readJSON('invitations.json', []);
   const users = readJSON('users.json', []);
-  const { inviterId, inviteeId, status } = req.query;
+  const reviews = readJSON('reviews.json', []);
+  const { inviterId, inviteeId, status, currentUserId } = req.query;
   
   let result = invitations;
   
@@ -21,11 +22,40 @@ router.get('/', (req, res) => {
     result = result.filter(i => i.status === status);
   }
   
-  const enriched = result.map(inv => ({
-    ...inv,
-    inviter: users.find(u => u.id === inv.inviterId) || null,
-    invitee: users.find(u => u.id === inv.inviteeId) || null
-  }));
+  const enriched = result.map(inv => {
+    const inviterReviewed = reviews.some(r => 
+      r.targetType === 'invitation' && 
+      r.targetId === inv.id && 
+      r.reviewerId === inv.inviterId
+    );
+    const inviteeReviewed = reviews.some(r => 
+      r.targetType === 'invitation' && 
+      r.targetId === inv.id && 
+      r.reviewerId === inv.inviteeId
+    );
+    
+    let myReviewed = false;
+    let canReviewOther = false;
+    if (currentUserId) {
+      if (currentUserId === inv.inviterId) {
+        myReviewed = inviterReviewed;
+        canReviewOther = inv.status === 'completed' && !inviterReviewed;
+      } else if (currentUserId === inv.inviteeId) {
+        myReviewed = inviteeReviewed;
+        canReviewOther = inv.status === 'completed' && !inviteeReviewed;
+      }
+    }
+    
+    return {
+      ...inv,
+      inviterReviewed,
+      inviteeReviewed,
+      myReviewed,
+      canReviewOther,
+      inviter: users.find(u => u.id === inv.inviterId) || null,
+      invitee: users.find(u => u.id === inv.inviteeId) || null
+    };
+  });
   
   res.json(enriched);
 });
@@ -33,17 +63,47 @@ router.get('/', (req, res) => {
 router.get('/user/:userId', (req, res) => {
   const invitations = readJSON('invitations.json', []);
   const users = readJSON('users.json', []);
+  const reviews = readJSON('reviews.json', []);
   const { userId } = req.params;
   
   const result = invitations.filter(i => 
     i.inviterId === userId || i.inviteeId === userId
   );
   
-  const enriched = result.map(inv => ({
-    ...inv,
-    inviter: users.find(u => u.id === inv.inviterId) || null,
-    invitee: users.find(u => u.id === inv.inviteeId) || null
-  }));
+  const enriched = result.map(inv => {
+    const inviterReviewed = reviews.some(r => 
+      r.targetType === 'invitation' && 
+      r.targetId === inv.id && 
+      r.reviewerId === inv.inviterId
+    );
+    const inviteeReviewed = reviews.some(r => 
+      r.targetType === 'invitation' && 
+      r.targetId === inv.id && 
+      r.reviewerId === inv.inviteeId
+    );
+    
+    let myReviewed = false;
+    let canReviewOther = false;
+    if (userId) {
+      if (userId === inv.inviterId) {
+        myReviewed = inviterReviewed;
+        canReviewOther = inv.status === 'completed' && !inviterReviewed;
+      } else if (userId === inv.inviteeId) {
+        myReviewed = inviteeReviewed;
+        canReviewOther = inv.status === 'completed' && !inviteeReviewed;
+      }
+    }
+    
+    return {
+      ...inv,
+      inviterReviewed,
+      inviteeReviewed,
+      myReviewed,
+      canReviewOther,
+      inviter: users.find(u => u.id === inv.inviterId) || null,
+      invitee: users.find(u => u.id === inv.inviteeId) || null
+    };
+  });
   
   res.json(enriched);
 });
@@ -72,13 +132,19 @@ router.put('/:id', (req, res) => {
     return res.status(404).json({ error: '邀约不存在' });
   }
   
+  const newStatus = req.body.status;
+  const oldStatus = invitations[idx].status;
+  
   invitations[idx] = { 
     ...invitations[idx], 
     ...req.body, 
     id: invitations[idx].id,
-    repliedAt: req.body.status && req.body.status !== 'pending' 
-      ? new Date().toISOString() 
-      : invitations[idx].repliedAt
+    repliedAt: (newStatus && newStatus !== 'pending' && newStatus !== 'completed')
+      ? (invitations[idx].repliedAt || new Date().toISOString())
+      : invitations[idx].repliedAt,
+    completedAt: newStatus === 'completed' && oldStatus !== 'completed'
+      ? new Date().toISOString()
+      : invitations[idx].completedAt
   };
   
   writeJSON('invitations.json', invitations);

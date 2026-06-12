@@ -35,9 +35,36 @@ router.get('/', (req, res) => {
   res.json(enriched);
 });
 
+router.get('/check', (req, res) => {
+  const reviews = readJSON('reviews.json', []);
+  const { reviewerId, targetType, targetId } = req.query;
+  
+  const exists = reviews.some(r => 
+    r.reviewerId === reviewerId &&
+    r.targetType === targetType &&
+    r.targetId === targetId
+  );
+  
+  res.json({ reviewed: exists });
+});
+
 router.post('/', (req, res) => {
   const reviews = readJSON('reviews.json', []);
   const users = readJSON('users.json', []);
+  const { reviewerId, targetType, targetId } = req.body;
+  
+  const exists = reviews.some(r => 
+    r.reviewerId === reviewerId &&
+    r.targetType === targetType &&
+    r.targetId === targetId
+  );
+  
+  if (exists) {
+    return res.status(400).json({ 
+      success: false, 
+      error: '您已对此进行过评价，不能重复评价' 
+    });
+  }
   
   const newReview = {
     id: 'r' + uuidv4().slice(0, 8),

@@ -8,7 +8,8 @@ router.get('/', (req, res) => {
   const borrows = readJSON('borrows.json', []);
   const instruments = readJSON('instruments.json', []);
   const users = readJSON('users.json', []);
-  const { borrowerId, ownerId, status } = req.query;
+  const reviews = readJSON('reviews.json', []);
+  const { borrowerId, ownerId, status, currentUserId } = req.query;
   
   let result = borrows;
   
@@ -22,12 +23,41 @@ router.get('/', (req, res) => {
     result = result.filter(b => b.status === status);
   }
   
-  const enriched = result.map(b => ({
-    ...b,
-    instrument: instruments.find(i => i.id === b.instrumentId) || null,
-    borrower: users.find(u => u.id === b.borrowerId) || null,
-    owner: users.find(u => u.id === b.ownerId) || null
-  }));
+  const enriched = result.map(b => {
+    const borrowerReviewed = reviews.some(r => 
+      r.targetType === 'borrow' && 
+      r.targetId === b.id && 
+      r.reviewerId === b.borrowerId
+    );
+    const ownerReviewed = reviews.some(r => 
+      r.targetType === 'borrow' && 
+      r.targetId === b.id && 
+      r.reviewerId === b.ownerId
+    );
+    
+    let myReviewed = false;
+    let canReviewOther = false;
+    if (currentUserId) {
+      if (currentUserId === b.borrowerId) {
+        myReviewed = borrowerReviewed;
+        canReviewOther = b.status === 'returned' && !borrowerReviewed;
+      } else if (currentUserId === b.ownerId) {
+        myReviewed = ownerReviewed;
+        canReviewOther = b.status === 'returned' && !ownerReviewed;
+      }
+    }
+    
+    return {
+      ...b,
+      borrowerReviewed,
+      ownerReviewed,
+      myReviewed,
+      canReviewOther,
+      instrument: instruments.find(i => i.id === b.instrumentId) || null,
+      borrower: users.find(u => u.id === b.borrowerId) || null,
+      owner: users.find(u => u.id === b.ownerId) || null
+    };
+  });
   
   res.json(enriched);
 });
@@ -54,7 +84,6 @@ router.get('/:id', (req, res) => {
 
 router.post('/', (req, res) => {
   const borrows = readJSON('borrows.json', []);
-  const instruments = readJSON('instruments.json', []);
   
   const newBorrow = {
     id: 'b' + uuidv4().slice(0, 8),
@@ -85,6 +114,7 @@ router.put('/:id', (req, res) => {
   
   if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
     borrows[idx].confirmedAt = new Date().toISOString();
+    borrows[idx].status = 'borrowing';
     const instIdx = instruments.findIndex(i => i.id === borrows[idx].instrumentId);
     if (instIdx !== -1) {
       instruments[instIdx].status = 'borrowed';
@@ -92,8 +122,13 @@ router.put('/:id', (req, res) => {
     }
   }
   
+  if (newStatus === 'borrowing' && oldStatus === 'confirmed') {
+    borrows[idx].status = 'borrowing';
+  }
+  
   if (newStatus === 'returned' && oldStatus !== 'returned') {
     borrows[idx].returnedAt = new Date().toISOString();
+    borrows[idx].status = 'returned';
     const instIdx = instruments.findIndex(i => i.id === borrows[idx].instrumentId);
     if (instIdx !== -1) {
       instruments[instIdx].status = 'available';

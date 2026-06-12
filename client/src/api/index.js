@@ -58,6 +58,7 @@ export const checkinApi = {
 
 export const reviewApi = {
   list: (params) => api.get('/reviews', { params }),
+  check: (params) => api.get('/reviews/check', { params }),
   create: (data) => api.post('/reviews', data)
 }
 

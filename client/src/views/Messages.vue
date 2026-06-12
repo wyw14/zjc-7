@@ -28,6 +28,10 @@
                     <b>{{ b.borrower?.username }}</b> 申请借用您的
                     <router-link :to="`/instruments/${b.instrumentId}`">{{ b.instrument?.name }}</router-link>
                     <span class="badge" :class="statusClass(b.status)">{{ statusText(b.status) }}</span>
+                    <span v-if="b.status === 'returned'" class="review-status">
+                      <el-tag v-if="b.ownerReviewed" type="success" size="small">您已评价</el-tag>
+                      <el-tag v-if="b.borrowerReviewed" type="info" size="small">对方已评价</el-tag>
+                    </span>
                   </div>
                   <div class="msg-meta">
                     <span><el-icon><Calendar /></el-icon> {{ b.startDate }} 至 {{ b.endDate }}</span>
@@ -50,6 +54,15 @@
                       确认归还
                     </el-button>
                   </div>
+                  <div class="msg-actions" v-if="b.status === 'returned' && b.canReviewOther">
+                    <el-button type="warning" size="small" @click="showReviewDialog(b, 'borrow')">
+                      <el-icon><Edit /></el-icon>
+                      评价借用人
+                    </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="b.status === 'returned' && b.ownerReviewed">
+                    <el-tag type="success" size="small">您已评价</el-tag>
+                  </div>
                 </div>
               </div>
             </div>
@@ -69,16 +82,27 @@
                     <router-link :to="`/instruments/${b.instrumentId}`">{{ b.instrument?.name }}</router-link>
                     （主人：{{ b.owner?.username }}）
                     <span class="badge" :class="statusClass(b.status)">{{ statusText(b.status) }}</span>
+                    <span v-if="b.status === 'returned'" class="review-status">
+                      <el-tag v-if="b.borrowerReviewed" type="success" size="small">您已评价</el-tag>
+                      <el-tag v-if="b.ownerReviewed" type="info" size="small">主人已评价</el-tag>
+                    </span>
                   </div>
                   <div class="msg-meta">
                     <span><el-icon><Calendar /></el-icon> {{ b.startDate }} 至 {{ b.endDate }}</span>
                     <span><el-icon><Wallet /></el-icon> 租金 ¥{{ b.feeTotal }} + 押金 ¥{{ b.depositPaid }}</span>
                   </div>
-                  <div class="msg-actions" v-if="b.status === 'returned' && !b.reviewed">
-                    <el-button type="primary" size="small" @click="showReviewDialog(b, 'borrow')">
+                  <p class="msg-body" v-if="b.purpose">借用目的：{{ b.purpose }}</p>
+                  <div class="msg-actions" v-if="b.status === 'borrowing'">
+                    <el-tag type="primary" size="small">借用中，请按时归还</el-tag>
+                  </div>
+                  <div class="msg-actions" v-if="b.status === 'returned' && b.canReviewOther">
+                    <el-button type="warning" size="small" @click="showReviewDialog(b, 'borrow')">
                       <el-icon><Edit /></el-icon>
-                      评价本次借用
+                      评价主人
                     </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="b.status === 'returned' && b.borrowerReviewed">
+                    <el-tag type="success" size="small">您已评价</el-tag>
                   </div>
                 </div>
               </div>
@@ -105,6 +129,10 @@
                   <div class="msg-title">
                     <b>{{ inv.inviter?.username }}</b> 邀请你一起练琴
                     <span class="badge" :class="statusClass(inv.status)">{{ statusText(inv.status) }}</span>
+                    <span v-if="inv.status === 'completed'" class="review-status">
+                      <el-tag v-if="inv.inviteeReviewed" type="success" size="small">您已评价</el-tag>
+                      <el-tag v-if="inv.inviterReviewed" type="info" size="small">对方已评价</el-tag>
+                    </span>
                   </div>
                   <div class="msg-meta">
                     <span><el-icon><MagicStick /></el-icon> {{ inv.instrument }}</span>
@@ -123,11 +151,20 @@
                       婉拒
                     </el-button>
                   </div>
-                  <div class="msg-actions" v-if="inv.status === 'accepted' && !inv.reviewed">
-                    <el-button type="primary" size="small" @click="showReviewDialog(inv, 'invitation')">
-                      <el-icon><Edit /></el-icon>
-                      评价TA
+                  <div class="msg-actions" v-if="inv.status === 'accepted'">
+                    <el-button type="primary" size="small" @click="markInvitationCompleted(inv)">
+                      <el-icon><CircleCheck /></el-icon>
+                      标记已完成（练琴后）
                     </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="inv.status === 'completed' && inv.canReviewOther">
+                    <el-button type="warning" size="small" @click="showReviewDialog(inv, 'invitation')">
+                      <el-icon><Edit /></el-icon>
+                      评价邀约人
+                    </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="inv.status === 'completed' && inv.inviteeReviewed">
+                    <el-tag type="success" size="small">您已评价</el-tag>
                   </div>
                 </div>
               </div>
@@ -146,11 +183,32 @@
                   <div class="msg-title">
                     你邀约 <b>{{ inv.invitee?.username }}</b> 练琴
                     <span class="badge" :class="statusClass(inv.status)">{{ statusText(inv.status) }}</span>
+                    <span v-if="inv.status === 'completed'" class="review-status">
+                      <el-tag v-if="inv.inviterReviewed" type="success" size="small">您已评价</el-tag>
+                      <el-tag v-if="inv.inviteeReviewed" type="info" size="small">对方已评价</el-tag>
+                    </span>
                   </div>
                   <div class="msg-meta">
                     <span><el-icon><MagicStick /></el-icon> {{ inv.instrument }}</span>
+                    <span><el-icon><Notebook /></el-icon> {{ inv.piece || '待定' }}</span>
                     <span><el-icon><Calendar /></el-icon> {{ inv.meetTime }}</span>
                     <span><el-icon><Location /></el-icon> {{ inv.location }}</span>
+                  </div>
+                  <p class="msg-body" v-if="inv.message">留言：{{ inv.message }}</p>
+                  <div class="msg-actions" v-if="inv.status === 'accepted'">
+                    <el-button type="primary" size="small" @click="markInvitationCompleted(inv)">
+                      <el-icon><CircleCheck /></el-icon>
+                      标记已完成（练琴后）
+                    </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="inv.status === 'completed' && inv.canReviewOther">
+                    <el-button type="warning" size="small" @click="showReviewDialog(inv, 'invitation')">
+                      <el-icon><Edit /></el-icon>
+                      评价陪练伙伴
+                    </el-button>
+                  </div>
+                  <div class="msg-actions" v-if="inv.status === 'completed' && inv.inviterReviewed">
+                    <el-tag type="success" size="small">您已评价</el-tag>
                   </div>
                 </div>
               </div>
@@ -161,8 +219,14 @@
       </el-tabs>
     </div>
     
-    <el-dialog v-model="showReview" title="评价" width="500px">
+    <el-dialog v-model="showReview" :title="reviewForm.title" width="500px">
       <el-form :model="reviewForm" label-width="80px">
+        <el-form-item label="评价对象">
+          <div class="review-target">
+            <img :src="reviewForm.revieweeAvatar" class="avatar-sm" />
+            <span>{{ reviewForm.revieweeName }}</span>
+          </div>
+        </el-form-item>
         <el-form-item label="评分">
           <el-rate v-model="reviewForm.rating" show-score text-color="#ff9900" />
         </el-form-item>
@@ -199,9 +263,15 @@ const submitting = ref(false)
 const currentTarget = ref(null)
 
 const reviewForm = reactive({
+  title: '评价',
   rating: 5,
   context: '',
-  content: ''
+  content: '',
+  revieweeId: '',
+  revieweeName: '',
+  revieweeAvatar: '',
+  targetType: '',
+  targetId: ''
 })
 
 const statusMap = {
@@ -232,15 +302,23 @@ onMounted(async () => {
 
 const loadAll = async () => {
   try {
-    borrows.value = await borrowApi.list({ ownerId: userStore.userId })
-    const asBorrower = await borrowApi.list({ borrowerId: userStore.userId })
-    const borrowSet = new Map(borrows.value.map(b => [b.id, b]))
-    asBorrower.forEach(b => { if (!borrowSet.has(b.id)) borrows.value.push(b) })
-  } catch (e) {}
+    const [asOwner, asBorrower] = await Promise.all([
+      borrowApi.list({ ownerId: userStore.userId, currentUserId: userStore.userId }),
+      borrowApi.list({ borrowerId: userStore.userId, currentUserId: userStore.userId })
+    ])
+    const borrowSet = new Map()
+    asOwner.forEach(b => borrowSet.set(b.id, b))
+    asBorrower.forEach(b => { if (!borrowSet.has(b.id)) borrowSet.set(b.id, b) })
+    borrows.value = Array.from(borrowSet.values())
+  } catch (e) {
+    console.error(e)
+  }
   
   try {
     invitations.value = await invitationApi.listByUser(userStore.userId)
-  } catch (e) {}
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 const updateBorrow = async (b, status) => {
@@ -252,7 +330,7 @@ const updateBorrow = async (b, status) => {
   
   try {
     await borrowApi.update(b.id, { status })
-    ElMessage.success('操作成功')
+    ElMessage.success(status === 'confirmed' ? '已同意借用，乐器标记为借用中' : '已拒绝申请')
     await loadAll()
   } catch (e) {
     ElMessage.error('操作失败')
@@ -261,12 +339,12 @@ const updateBorrow = async (b, status) => {
 
 const confirmReturn = async (b) => {
   try {
-    await ElMessageBox.confirm('确认乐器已完好归还？确认后将退还押金。', '归还确认', { type: 'success' })
+    await ElMessageBox.confirm('确认乐器已完好归还？确认后将退还押金，双方都可以进行评价。', '归还确认', { type: 'success' })
   } catch { return }
   
   try {
     await borrowApi.update(b.id, { status: 'returned' })
-    ElMessage.success('已确认归还')
+    ElMessage.success('已确认归还，请互相评价~')
     await loadAll()
   } catch (e) {
     ElMessage.error('操作失败')
@@ -282,7 +360,21 @@ const updateInvitation = async (inv, status) => {
   
   try {
     await invitationApi.update(inv.id, { status })
-    ElMessage.success('操作成功')
+    ElMessage.success(status === 'accepted' ? '已接受邀约，一起开心练琴吧~' : '已婉拒邀约')
+    await loadAll()
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+const markInvitationCompleted = async (inv) => {
+  try {
+    await ElMessageBox.confirm('确认本次练琴已完成？确认后双方可以进行互评。', '完成确认', { type: 'success' })
+  } catch { return }
+  
+  try {
+    await invitationApi.update(inv.id, { status: 'completed' })
+    ElMessage.success('已标记完成，记得给对方一个评价~')
     await loadAll()
   } catch (e) {
     ElMessage.error('操作失败')
@@ -291,7 +383,29 @@ const updateInvitation = async (inv, status) => {
 
 const showReviewDialog = (target, type) => {
   currentTarget.value = target
-  reviewForm.context = type === 'borrow' ? '乐器借用' : '陪练邀约'
+  
+  if (type === 'borrow') {
+    const isOwner = userStore.userId === target.ownerId
+    const reviewee = isOwner ? target.borrower : target.owner
+    reviewForm.title = isOwner ? '评价借用人' : '评价乐器主人'
+    reviewForm.context = '乐器借用'
+    reviewForm.revieweeId = reviewee?.id
+    reviewForm.revieweeName = reviewee?.username
+    reviewForm.revieweeAvatar = reviewee?.avatar
+    reviewForm.targetType = 'borrow'
+    reviewForm.targetId = target.id
+  } else {
+    const isInviter = userStore.userId === target.inviterId
+    const reviewee = isInviter ? target.invitee : target.inviter
+    reviewForm.title = '评价陪练伙伴'
+    reviewForm.context = '陪练邀约'
+    reviewForm.revieweeId = reviewee?.id
+    reviewForm.revieweeName = reviewee?.username
+    reviewForm.revieweeAvatar = reviewee?.avatar
+    reviewForm.targetType = 'invitation'
+    reviewForm.targetId = target.id
+  }
+  
   reviewForm.rating = 5
   reviewForm.content = ''
   showReview.value = true
@@ -304,27 +418,38 @@ const submitReview = async () => {
   }
   submitting.value = true
   try {
-    const target = currentTarget.value
-    const isBorrow = reviewForm.context === '乐器借用'
-    const revieweeId = isBorrow ? target.ownerId : target.inviterId
-    const targetId = isBorrow ? target.id : target.id
-    const targetType = isBorrow ? 'borrow' : 'user'
+    const checkResult = await reviewApi.check({
+      reviewerId: userStore.userId,
+      targetType: reviewForm.targetType,
+      targetId: reviewForm.targetId
+    })
+    
+    if (checkResult.reviewed) {
+      ElMessage.warning('您已经评价过了，不能重复评价')
+      showReview.value = false
+      await loadAll()
+      return
+    }
     
     await reviewApi.create({
       reviewerId: userStore.userId,
-      revieweeId,
-      targetType,
-      targetId,
+      revieweeId: reviewForm.revieweeId,
+      targetType: reviewForm.targetType,
+      targetId: reviewForm.targetId,
       rating: reviewForm.rating,
       content: reviewForm.content,
       context: reviewForm.context
     })
-    ElMessage.success('评价提交成功！')
+    ElMessage.success('评价提交成功！感谢您的反馈~')
     showReview.value = false
     await loadAll()
     await userStore.refreshUser()
   } catch (e) {
-    ElMessage.error('提交失败')
+    if (e.response?.data?.error) {
+      ElMessage.warning(e.response.data.error)
+    } else {
+      ElMessage.error('提交失败')
+    }
   } finally {
     submitting.value = false
   }
@@ -402,6 +527,11 @@ const submitReview = async () => {
   color: var(--primary-color);
 }
 
+.review-status {
+  display: flex;
+  gap: 6px;
+}
+
 .msg-meta {
   display: flex;
   flex-wrap: wrap;
@@ -428,6 +558,13 @@ const submitReview = async () => {
 
 .msg-actions {
   display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.review-target {
+  display: flex;
+  align-items: center;
   gap: 10px;
 }
 
